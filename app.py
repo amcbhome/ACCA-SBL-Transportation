@@ -44,12 +44,12 @@ supply = {
     "D3": st.sidebar.number_input("D3 Supply", min_value=0, value=1250, step=100)
 }
 
-# Store Capacity Inputs (Demand Constraints: Store 1=2000, Store 2=3000, Store 3=2000)
-st.sidebar.subheader("3. Store Capacity / Demand")
+# Store Target Demand Inputs (Store 1=2000, Store 2=2850, Store 3=2000)
+st.sidebar.subheader("3. Store Demand Target")
 demand = {
-    "Store 1": st.sidebar.number_input("Store 1 Capacity", min_value=0, value=2000, step=100),
-    "Store 2": st.sidebar.number_input("Store 2 Capacity", min_value=0, value=3000, step=100),
-    "Store 3": st.sidebar.number_input("Store 3 Capacity", min_value=0, value=2000, step=100)
+    "Store 1": st.sidebar.number_input("Store 1 Demand", min_value=0, value=2000, step=100),
+    "Store 2": st.sidebar.number_input("Store 2 Demand", min_value=0, value=2850, step=100),
+    "Store 3": st.sidebar.number_input("Store 3 Demand", min_value=0, value=2000, step=100)
 }
 
 # Total Network Sanity Check
@@ -103,19 +103,19 @@ model += pulp.lpSum([x[i][j] * costs[i][j] for (i, j) in routes]), "Total_Delive
 for i in depots:
     model += (pulp.lpSum([x[i][j] for j in stores]) <= supply[i], f"Depot_Supply_{i}")
 
-# Store Capacity Constraints: TVs received <= Store capacity ($C$18:$E$18 <= $C$20:$E$20)
+# Store Demand Constraints: TVs received EQUALS required store demand ($C$18:$E$18 == $C$20:$E$20)
 for j in stores:
-    model += (pulp.lpSum([x[i][j] for i in depots]) <= demand[j], f"Store_Capacity_{j}")
+    model += (pulp.lpSum([x[i][j] for i in depots]) == demand[j], f"Store_Demand_{j}")
 
-# Solve Model using standard Simplex LP engine
+# Solve Model using CBC Simplex LP engine
 model.solve(pulp.PULP_CBC_CMD(msg=False))
 status = pulp.LpStatus[model.status]
 
 # --- RESULTS DASHBOARD ---
 st.divider()
 
-if status != "Optimal":
-    st.error("⚠️ **Infeasible Optimization State**: The linear constraints cannot be satisfied with the current parameters.")
+if status != "Optimal" or total_supply < total_demand:
+    st.error("⚠️ **Infeasible Optimization State**: Total demand exceeds total depot supply, or constraints cannot be satisfied.")
 else:
     total_cost = pulp.value(model.objective)
 
@@ -166,10 +166,10 @@ st.divider()
 st.subheader("💡 Strategic Benefits: Transitioning from Excel Solver to Python (`PuLP`)")
 
 st.markdown("""
-While classic accounting curricula (ACCA PM/APM) teach linear programming using spreadsheet models like the Excel Solver matrix shown above, migrating these models to Python provides distinct commercial advantages:
+While classic accounting curricula (ACCA PM/APM) teach linear programming using manual matrix steps or Excel's Solver plugin, migrating these models to Python provides distinct commercial advantages:
 
 1. **Overcoming Constraint & Cell Limits:** Standard Excel Solver restricts models to 200 decision variables without expensive third-party add-ins. Python's `PuLP` interface handles thousands of supply nodes, routes, and SKU constraints seamlessly.
-2. **Auditability & Reduced Cell Error:** Formula errors in hidden spreadsheet cells (e.g., misaligned cell ranges in Solver parameters) can obscure misallocations. Python isolates logic, parameters, and constraints into clear, version-controlled code on GitHub.
+2. **Auditability & Reduced Cell Error:** Formula errors in hidden spreadsheet cells can obscure misallocations. Python isolates logic, parameters, and constraints into clear, version-controlled code on GitHub.
 3. **Automated Pipeline Integration:** Instead of manual spreadsheet copy-pasting, Python scripts pull live inventory levels and store demand forecasts straight from SQL databases or ERP systems.
 4. **Interactive Executive Dashboards:** Deploying with frameworks like Streamlit transforms static financial workbooks into dynamic web applications that commercial management can test in real time.
 """)
