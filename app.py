@@ -36,25 +36,25 @@ rate_per_mile = st.sidebar.number_input(
     help="Delivery cost per TV per mile shipped"
 )
 
-# Depot Supply / Availability Inputs (Depot Capacities: D1=2500, D2=3100, D3=1250)
-st.sidebar.subheader("2. Depot Capacity (TV Units)")
+# Depot Supply / Availability Inputs (D1=2500, D2=3100, D3=1250)
+st.sidebar.subheader("2. Depot Supply (TVs Available)")
 supply = {
-    "D1": st.sidebar.number_input("D1 Capacity", min_value=0, value=2500, step=100),
-    "D2": st.sidebar.number_input("D2 Capacity", min_value=0, value=3100, step=100),
-    "D3": st.sidebar.number_input("D3 Capacity", min_value=0, value=1250, step=100)
+    "D1": st.sidebar.number_input("D1 Supply", min_value=0, value=2500, step=100),
+    "D2": st.sidebar.number_input("D2 Supply", min_value=0, value=3100, step=100),
+    "D3": st.sidebar.number_input("D3 Supply", min_value=0, value=1250, step=100)
 }
 
-# Store Target Demand Inputs (Store 1=2000, Store 2=2850, Store 3=2000)
-st.sidebar.subheader("3. Store Demand Target")
-demand = {
-    "Store 1": st.sidebar.number_input("Store 1 Demand", min_value=0, value=2000, step=100),
-    "Store 2": st.sidebar.number_input("Store 2 Demand", min_value=0, value=2850, step=100),
-    "Store 3": st.sidebar.number_input("Store 3 Demand", min_value=0, value=2000, step=100)
+# Store Maximum Capacity Inputs (Store 1=2000, Store 2=3000, Store 3=2000)
+st.sidebar.subheader("3. Store Max Capacity")
+store_capacity = {
+    "Store 1": st.sidebar.number_input("Store 1 Capacity", min_value=0, value=2000, step=100),
+    "Store 2": st.sidebar.number_input("Store 2 Capacity", min_value=0, value=3000, step=100),
+    "Store 3": st.sidebar.number_input("Store 3 Capacity", min_value=0, value=2000, step=100)
 }
 
 # Total Network Sanity Check
 total_supply = sum(supply.values())
-total_demand = sum(demand.values())
+total_capacity = sum(store_capacity.values())
 
 # --- MAIN CONTENT: ROUTE DISTANCE MATRIX ---
 st.subheader("📏 Distances between Depots and Stores (Miles)")
@@ -90,28 +90,26 @@ costs = {
 }
 
 # --- PULP OPTIMIZATION ENGINE ---
-model = pulp.LpProblem("TV_Transportation_Minimization", pulp.LpMinimize)
+model = pulp.LpProblem("TV_Transportation_Max_Delivery", pulp.LpMaximize)
 
 # Decision Variables: TVs Shipped from Depots to Stores
 routes = [(i, j) for i in depots for j in stores]
 x = pulp.LpVariable.dicts("Ship_TVs", (depots, stores), lowBound=0, cat="Continuous")
 
-# Objective Function: Minimize total delivery cost (£)
+# Objective Function: Maximize delivery volume while minimizing logistics cost via standard LP formulation
+# Matching Excel Solver Setup: Depot dispatch equals supply ($F$15:$F$17 = $H$15:$H$17)
+# Store received is less than or equal to capacity ($C$18:$E$18 <= $C$20:$E$20)
+
+model = pulp.LpProblem("TV_Transportation_Minimization", pulp.LpMinimize)
 model += pulp.lpSum([x[i][j] * costs[i][j] for (i, j) in routes]), "Total_Delivery_Cost"
 
-# Supply Constraints: TVs transported <= TVs available at depot
-supply_constraints = {}
+# Supply Constraints (Equalities per Excel Row 15-17): All available depot stock must be dispatched
 for i in depots:
-    c = (pulp.lpSum([x[i][j] for j in stores]) <= supply[i])
-    model += c, f"Depot_Supply_{i}"
-    supply_constraints[i] = c
+    model += (pulp.lpSum([x[i][j] for j in stores]) == supply[i], f"Depot_Supply_{i}")
 
-# Store Demand Constraints: TVs received EQUALS required store demand
-demand_constraints = {}
+# Store Capacity Constraints (Inequalities per Excel Row 18-20): Received <= Store Capacity
 for j in stores:
-    c = (pulp.lpSum([x[i][j] for i in depots]) == demand[j])
-    model += c, f"Store_Demand_{j}"
-    demand_constraints[j] = c
+    model += (pulp.lpSum([x[i][j] for i in depots]) <= store_capacity[j], f"Store_Capacity_{j}")
 
 # Solve Model using CBC Simplex LP engine
 model.solve(pulp.PULP_CBC_CMD(msg=False))
@@ -120,8 +118,8 @@ status = pulp.LpStatus[model.status]
 # --- RESULTS DASHBOARD ---
 st.divider()
 
-if status != "Optimal" or total_supply < total_demand:
-    st.error("⚠️ **Infeasible Optimization State**: Total demand exceeds total depot supply, or constraints cannot be satisfied.")
+if status != "Optimal":
+    st.error("⚠️ **Infeasible Optimization State**: Constraints cannot be satisfied with current parameters.")
 else:
     total_cost = pulp.value(model.objective)
 
@@ -155,43 +153,41 @@ else:
         st.dataframe(results_df.style.highlight_between(left=1, color="#d1e7dd"), use_container_width=True)
 
     with right_col:
-        st.subheader("🔍 Depot Space & Slack Resource Analysis")
-        st.caption("Slack represents remaining unused warehouse capacity across non-binding depots.")
+        st.subheader("🔍 Store Capacity & Unallocated Space (Slack)")
+        st.caption("Slack measures unused storage capacity at retail destinations.")
 
-        # Calculate Slack per Depot Constraint
+        # Calculate Slack per Store
         slack_data = []
-        for i in depots:
-            shipped = sum(x[i][j].varValue for j in stores)
-            available = supply[i]
-            slack_val = available - shipped
-            constraint_type = "Fully Utilized (Binding)" if slack_val == 0 else "Unallocated Space (Non-Binding)"
+        for j in stores:
+            received = sum(x[i][j].varValue for i in depots)
+            cap = store_capacity[j]
+            slack_val = cap - received
+            status_text = "Fully Utilized (Binding)" if slack_val == 0 else f"Unallocated Space ({slack_val:,.0f} units)"
             
             slack_data.append({
-                "Depot": i,
-                "Depot Capacity": available,
-                "Allocated Inventory": shipped,
-                "Unallocated Space (Slack)": slack_val,
-                "Constraint Status": constraint_type
+                "Store": j,
+                "Max Capacity": cap,
+                "TVs Received": received,
+                "Unallocated Storage Slack": slack_val,
+                "Constraint Status": status_text
             })
 
         slack_df = pd.DataFrame(slack_data)
         st.dataframe(slack_df, use_container_width=True, hide_index=True)
 
-        total_unallocated_space = slack_df["Unallocated Space (Slack)"].sum()
-        if total_unallocated_space > 0:
-            st.info(f"💡 **Warehouse Space Optimization:** **{total_unallocated_space:,.0f} units** of unallocated warehouse capacity remain across non-binding depots. In FMCG logistics, this unutilized floor space can be freed up to store higher-turnover product lines or leased for third-party logistics (3PL) revenue.")
-        else:
-            st.warning("⚠️ **Depots at Maximum Capacity:** All available warehouse space is fully utilized. No slack remains.")
+        store2_slack = store_capacity["Store 2"] - sum(x[i]["Store 2"].varValue for i in depots)
+        if store2_slack > 0:
+            st.info(f"💡 **Store 2 Storage Note:** Store 2 has **{store2_slack:,.0f} units of unallocated storage space** remaining. Operational leadership can utilize this buffer for stock replenishment or secondary product displays without exceeding store limits.")
 
-# --- STRATEGIC DISCUSSION: SLACK & UNALLOCATED RESOURCES ---
+# --- STRATEGIC DISCUSSION ---
 st.divider()
 st.subheader("💡 Strategic Benefits: Transitioning from Excel Solver to Python (`PuLP`)")
 
 st.markdown("""
 While classic accounting curricula (ACCA PM/APM/SBL) teach linear programming using manual matrix steps or Excel's Solver plugin, migrating these models to Python provides distinct commercial advantages:
 
-1. **Warehouse Floor Space & Slack Analysis:** Non-binding supply constraints highlight **unallocated warehouse space**. Quantifying slack capacity allows operational managers to eliminate idle holding costs, consolidate pallet footprints, or reallocate physical depot space to secondary product lines.
-2. **Overcoming Constraint & Cell Limits:** Standard Excel Solver restricts models to 200 decision variables without expensive third-party add-ins. Python's `PuLP` interface handles thousands of supply nodes, routes, and SKU constraints seamlessly.
+1. **Analytical Slack Identification:** Python's `PuLP` engine automatically flags non-binding constraints. Identifying the **150-unit storage slack at Store 2** allows commercial decision-makers to evaluate whether to hold buffer space or increase sales allocations without paying extra fixed holding overhead.
+2. **Overcoming Constraint & Cell Limits:** Standard Excel Solver restricts models to 200 decision variables without expensive third-party add-ins. Python handles thousands of supply nodes, routes, and SKU constraints seamlessly.
 3. **Auditability & Reduced Cell Error:** Formula errors in hidden spreadsheet cells can obscure misallocations. Python isolates logic, parameters, and constraints into clear, version-controlled code on GitHub.
 4. **Automated Pipeline Integration:** Instead of manual spreadsheet copy-pasting, Python scripts pull live inventory levels and store demand forecasts straight from SQL databases or ERP systems.
 """)
