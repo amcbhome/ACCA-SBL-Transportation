@@ -37,11 +37,11 @@ rate_per_mile = st.sidebar.number_input(
 )
 
 # Depot Supply / Availability Inputs (Depot Capacities: D1=2500, D2=3100, D3=1250)
-st.sidebar.subheader("2. Depot Supply (TVs Available)")
+st.sidebar.subheader("2. Depot Capacity (TV Units)")
 supply = {
-    "D1": st.sidebar.number_input("D1 Supply", min_value=0, value=2500, step=100),
-    "D2": st.sidebar.number_input("D2 Supply", min_value=0, value=3100, step=100),
-    "D3": st.sidebar.number_input("D3 Supply", min_value=0, value=1250, step=100)
+    "D1": st.sidebar.number_input("D1 Capacity", min_value=0, value=2500, step=100),
+    "D2": st.sidebar.number_input("D2 Capacity", min_value=0, value=3100, step=100),
+    "D3": st.sidebar.number_input("D3 Capacity", min_value=0, value=1250, step=100)
 }
 
 # Store Target Demand Inputs (Store 1=2000, Store 2=2850, Store 3=2000)
@@ -155,8 +155,8 @@ else:
         st.dataframe(results_df.style.highlight_between(left=1, color="#d1e7dd"), use_container_width=True)
 
     with right_col:
-        st.subheader("🔍 Constraint Slack & Resource Analysis")
-        st.caption("Slack measures unused capacity in non-binding constraints.")
+        st.subheader("🔍 Depot Space & Slack Resource Analysis")
+        st.caption("Slack represents remaining unused warehouse capacity across non-binding depots.")
 
         # Calculate Slack per Depot Constraint
         slack_data = []
@@ -164,24 +164,24 @@ else:
             shipped = sum(x[i][j].varValue for j in stores)
             available = supply[i]
             slack_val = available - shipped
-            constraint_type = "Binding" if slack_val == 0 else "Non-Binding (Slack Available)"
+            constraint_type = "Fully Utilized (Binding)" if slack_val == 0 else "Unallocated Space (Non-Binding)"
             
             slack_data.append({
                 "Depot": i,
-                "Available": available,
-                "Allocated": shipped,
-                "Unallocated Slack": slack_val,
+                "Depot Capacity": available,
+                "Allocated Inventory": shipped,
+                "Unallocated Space (Slack)": slack_val,
                 "Constraint Status": constraint_type
             })
 
         slack_df = pd.DataFrame(slack_data)
         st.dataframe(slack_df, use_container_width=True, hide_index=True)
 
-        total_unallocated = slack_df["Unallocated Slack"].sum()
-        if total_unallocated > 0:
-            st.info(f"💡 **Unallocated Resource Note:** Network contains **{total_unallocated:,.0f} unallocated TVs** across non-binding depots. This surplus capacity can be redirected to secondary demand regions or held to minimize holding costs.")
+        total_unallocated_space = slack_df["Unallocated Space (Slack)"].sum()
+        if total_unallocated_space > 0:
+            st.info(f"💡 **Warehouse Space Optimization:** **{total_unallocated_space:,.0f} units** of unallocated warehouse capacity remain across non-binding depots. In FMCG logistics, this unutilized floor space can be freed up to store higher-turnover product lines or leased for third-party logistics (3PL) revenue.")
         else:
-            st.warning("⚠️ **Fully Binding System:** All available depot inventory is exhausted. No slack remains.")
+            st.warning("⚠️ **Depots at Maximum Capacity:** All available warehouse space is fully utilized. No slack remains.")
 
 # --- STRATEGIC DISCUSSION: SLACK & UNALLOCATED RESOURCES ---
 st.divider()
@@ -190,7 +190,7 @@ st.subheader("💡 Strategic Benefits: Transitioning from Excel Solver to Python
 st.markdown("""
 While classic accounting curricula (ACCA PM/APM/SBL) teach linear programming using manual matrix steps or Excel's Solver plugin, migrating these models to Python provides distinct commercial advantages:
 
-1. **Analytical Slack Management:** When constraints are **non-binding**, the solver identifies positive slack values. In supply chain governance, surplus depot capacity highlights idle inventory holding costs that management can reallocate to auxiliary sales channels.
+1. **Warehouse Floor Space & Slack Analysis:** Non-binding supply constraints highlight **unallocated warehouse space**. Quantifying slack capacity allows operational managers to eliminate idle holding costs, consolidate pallet footprints, or reallocate physical depot space to secondary product lines.
 2. **Overcoming Constraint & Cell Limits:** Standard Excel Solver restricts models to 200 decision variables without expensive third-party add-ins. Python's `PuLP` interface handles thousands of supply nodes, routes, and SKU constraints seamlessly.
 3. **Auditability & Reduced Cell Error:** Formula errors in hidden spreadsheet cells can obscure misallocations. Python isolates logic, parameters, and constraints into clear, version-controlled code on GitHub.
 4. **Automated Pipeline Integration:** Instead of manual spreadsheet copy-pasting, Python scripts pull live inventory levels and store demand forecasts straight from SQL databases or ERP systems.
