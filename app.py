@@ -4,7 +4,7 @@ import pulp
 
 # Page Configuration
 st.set_page_config(
-    page_title="Supply Chain Transportation Optimizer",
+    page_title="ACCA SBL Transportation Optimizer",
     page_icon="🚚",
     layout="wide"
 )
@@ -14,7 +14,7 @@ st.title("🚚 Prescriptive Supply Chain Transportation Optimizer")
 st.markdown("""
 **ACCA Technical Framework Alignment (PM / APM / SBL)**  
 *This app updates the traditional spreadsheet solution (Excel Solver) to Python.*  
-Developed by **Alastair McBride** | [View Project Repository & CV on GitHub](https://github.com/amcbhome/delivery-LP)
+Developed by **Alastair McBride** | [View Project Repository & CV on GitHub](https://github.com/amcbhome/ACCA-SBL-Transportation)
 """)
 
 st.divider()
