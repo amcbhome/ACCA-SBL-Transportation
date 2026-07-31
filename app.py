@@ -46,28 +46,30 @@ total_demand = sum(demand.values())
 
 # --- MAIN CONTENT: COST MATRIX CONFIGURATION ---
 st.subheader("📊 Unit Shipping Cost Matrix (£ per unit)")
+st.caption("Adjust dynamic freight rates per route below:")
 
-# Setup DataFrame with Warehouse as a explicit data column to prevent Python 3.14 Index TypeErrors
-cost_data = [
-    {"Warehouse": "Warehouse A", "Hub North": 4.5, "Hub Central": 6.0, "Hub South": 8.0, "Hub East": 5.0},
-    {"Warehouse": "Warehouse B", "Hub North": 7.0, "Hub Central": 4.0, "Hub South": 5.5, "Hub East": 6.5},
-    {"Warehouse": "Warehouse C", "Hub North": 8.0, "Hub Central": 5.0, "Hub South": 3.5, "Hub East": 4.0},
-]
-cost_df = pd.DataFrame(cost_data)
+# Default Freight Rates
+default_rates = {
+    "Warehouse A": {"Hub North": 4.50, "Hub Central": 6.00, "Hub South": 8.00, "Hub East": 5.00},
+    "Warehouse B": {"Hub North": 7.00, "Hub Central": 4.00, "Hub South": 5.50, "Hub East": 6.50},
+    "Warehouse C": {"Hub North": 8.00, "Hub Central": 5.00, "Hub South": 3.50, "Hub East": 4.00},
+}
 
-edited_cost_df = st.data_editor(
-    cost_df,
-    use_container_width=True,
-    num_rows="fixed",
-    disabled=["Warehouse"],
-    help="Edit unit freight costs directly in the grid."
-)
+# Render Input Matrix in Clean Columns (Bypasses PyArrow/st.data_editor bugs)
+costs = {w: {} for w in warehouses}
 
-# Convert edited DataFrame back to operational dictionary format
-costs = {}
-for _, row in edited_cost_df.iterrows():
-    w_name = row["Warehouse"]
-    costs[w_name] = {h: float(row[h]) for h in hubs}
+for w in warehouses:
+    st.markdown(f"**{w}**")
+    cols = st.columns(len(hubs))
+    for idx, h in enumerate(hubs):
+        with cols[idx]:
+            costs[w][h] = st.number_input(
+                label=f"➔ {h}",
+                min_value=0.0,
+                value=float(default_rates[w][h]),
+                step=0.5,
+                key=f"cost_{w}_{h}"
+            )
 
 # --- PULP OPTIMIZATION ENGINE ---
 model = pulp.LpProblem("Supply_Chain_Freight_Minimization", pulp.LpMinimize)
@@ -86,7 +88,7 @@ for i in warehouses:
 for j in hubs:
     model += (pulp.lpSum([x[i][j] for i in warehouses]) >= demand[j], f"Demand_{j}")
 
-# Solve
+# Solve Model
 model.solve(pulp.PULP_CBC_CMD(msg=False))
 status = pulp.LpStatus[model.status]
 
