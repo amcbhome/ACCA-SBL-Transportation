@@ -90,17 +90,13 @@ costs = {
 }
 
 # --- PULP OPTIMIZATION ENGINE ---
-model = pulp.LpProblem("TV_Transportation_Max_Delivery", pulp.LpMaximize)
+model = pulp.LpProblem("TV_Transportation_Minimization", pulp.LpMinimize)
 
 # Decision Variables: TVs Shipped from Depots to Stores
 routes = [(i, j) for i in depots for j in stores]
 x = pulp.LpVariable.dicts("Ship_TVs", (depots, stores), lowBound=0, cat="Continuous")
 
-# Objective Function: Maximize delivery volume while minimizing logistics cost via standard LP formulation
-# Matching Excel Solver Setup: Depot dispatch equals supply ($F$15:$F$17 = $H$15:$H$17)
-# Store received is less than or equal to capacity ($C$18:$E$18 <= $C$20:$E$20)
-
-model = pulp.LpProblem("TV_Transportation_Minimization", pulp.LpMinimize)
+# Objective Function: Minimize total delivery cost (£)
 model += pulp.lpSum([x[i][j] * costs[i][j] for (i, j) in routes]), "Total_Delivery_Cost"
 
 # Supply Constraints (Equalities per Excel Row 15-17): All available depot stock must be dispatched
@@ -140,10 +136,11 @@ else:
         row = {}
         for j in stores:
             val = x[i][j].varValue
-            row[j] = val if val > 0 else 0
+            row[j] = int(round(val)) if val > 0 else 0
         results_data.append(row)
 
-    results_df = pd.DataFrame(results_data, index=depots)
+    # Create DataFrame and explicitly format as integers to remove decimal places
+    results_df = pd.DataFrame(results_data, index=depots).astype(int)
 
     # Output Visualizations & Tables
     left_col, right_col = st.columns([1, 1])
@@ -159,7 +156,7 @@ else:
         # Calculate Slack per Store
         slack_data = []
         for j in stores:
-            received = sum(x[i][j].varValue for i in depots)
+            received = int(round(sum(x[i][j].varValue for i in depots)))
             cap = store_capacity[j]
             slack_val = cap - received
             status_text = "Fully Utilized (Binding)" if slack_val == 0 else f"Unallocated Space ({slack_val:,.0f} units)"
