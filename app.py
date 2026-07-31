@@ -47,27 +47,27 @@ total_demand = sum(demand.values())
 # --- MAIN CONTENT: COST MATRIX CONFIGURATION ---
 st.subheader("📊 Unit Shipping Cost Matrix (£ per unit)")
 
-# Explicit Data Structure Definition
-default_cost_data = {
-    "Hub North": [4.5, 7.0, 8.0],
-    "Hub Central": [6.0, 4.0, 5.0],
-    "Hub South": [8.0, 5.5, 3.5],
-    "Hub East": [5.0, 6.5, 4.0]
-}
-
-# Create DataFrame and explicitly name the index to prevent Streamlit editor TypeErrors
-cost_df = pd.DataFrame(default_cost_data, index=warehouses)
-cost_df.index.name = "Warehouse"
+# Setup DataFrame with Warehouse as a explicit data column to prevent Python 3.14 Index TypeErrors
+cost_data = [
+    {"Warehouse": "Warehouse A", "Hub North": 4.5, "Hub Central": 6.0, "Hub South": 8.0, "Hub East": 5.0},
+    {"Warehouse": "Warehouse B", "Hub North": 7.0, "Hub Central": 4.0, "Hub South": 5.5, "Hub East": 6.5},
+    {"Warehouse": "Warehouse C", "Hub North": 8.0, "Hub Central": 5.0, "Hub South": 3.5, "Hub East": 4.0},
+]
+cost_df = pd.DataFrame(cost_data)
 
 edited_cost_df = st.data_editor(
     cost_df,
     use_container_width=True,
     num_rows="fixed",
+    disabled=["Warehouse"],
     help="Edit unit freight costs directly in the grid."
 )
 
-# Convert edited DataFrame back to operational dictionary
-costs = edited_cost_df.to_dict(orient="index")
+# Convert edited DataFrame back to operational dictionary format
+costs = {}
+for _, row in edited_cost_df.iterrows():
+    w_name = row["Warehouse"]
+    costs[w_name] = {h: float(row[h]) for h in hubs}
 
 # --- PULP OPTIMIZATION ENGINE ---
 model = pulp.LpProblem("Supply_Chain_Freight_Minimization", pulp.LpMinimize)
