@@ -99,13 +99,19 @@ x = pulp.LpVariable.dicts("Ship_TVs", (depots, stores), lowBound=0, cat="Continu
 # Objective Function: Minimize total delivery cost (£)
 model += pulp.lpSum([x[i][j] * costs[i][j] for (i, j) in routes]), "Total_Delivery_Cost"
 
-# Supply Constraints: TVs transported <= TVs available at depot ($F$15:$F$17 = $H$15:$H$17)
+# Supply Constraints: TVs transported <= TVs available at depot
+supply_constraints = {}
 for i in depots:
-    model += (pulp.lpSum([x[i][j] for j in stores]) <= supply[i], f"Depot_Supply_{i}")
+    c = (pulp.lpSum([x[i][j] for j in stores]) <= supply[i])
+    model += c, f"Depot_Supply_{i}"
+    supply_constraints[i] = c
 
-# Store Demand Constraints: TVs received EQUALS required store demand ($C$18:$E$18 == $C$20:$E$20)
+# Store Demand Constraints: TVs received EQUALS required store demand
+demand_constraints = {}
 for j in stores:
-    model += (pulp.lpSum([x[i][j] for i in depots]) == demand[j], f"Store_Demand_{j}")
+    c = (pulp.lpSum([x[i][j] for i in depots]) == demand[j])
+    model += c, f"Store_Demand_{j}"
+    demand_constraints[j] = c
 
 # Solve Model using CBC Simplex LP engine
 model.solve(pulp.PULP_CBC_CMD(msg=False))
@@ -145,31 +151,47 @@ else:
     left_col, right_col = st.columns([1, 1])
 
     with left_col:
-        st.subheader("📋 TVs Shipped from Warehouses to Stores")
+        st.subheader("📋 Optimal Dispatch Schedule (TVs)")
         st.dataframe(results_df.style.highlight_between(left=1, color="#d1e7dd"), use_container_width=True)
 
     with right_col:
-        st.subheader("📈 Route Volume Breakdown")
-        chart_df = results_df.reset_index().melt(id_vars="index", var_name="Store", value_name="TVs Shipped")
-        chart_df.rename(columns={"index": "Depot"}, inplace=True)
-        
-        st.bar_chart(
-            chart_df,
-            x="Store",
-            y="TVs Shipped",
-            color="Depot",
-            stack=False
-        )
+        st.subheader("🔍 Constraint Slack & Resource Analysis")
+        st.caption("Slack measures unused capacity in non-binding constraints.")
 
-# --- BENEFITS OF UPDATING FROM SPREADSHEET TO PYTHON ---
+        # Calculate Slack per Depot Constraint
+        slack_data = []
+        for i in depots:
+            shipped = sum(x[i][j].varValue for j in stores)
+            available = supply[i]
+            slack_val = available - shipped
+            constraint_type = "Binding" if slack_val == 0 else "Non-Binding (Slack Available)"
+            
+            slack_data.append({
+                "Depot": i,
+                "Available": available,
+                "Allocated": shipped,
+                "Unallocated Slack": slack_val,
+                "Constraint Status": constraint_type
+            })
+
+        slack_df = pd.DataFrame(slack_data)
+        st.dataframe(slack_df, use_container_width=True, hide_index=True)
+
+        total_unallocated = slack_df["Unallocated Slack"].sum()
+        if total_unallocated > 0:
+            st.info(f"💡 **Unallocated Resource Note:** Network contains **{total_unallocated:,.0f} unallocated TVs** across non-binding depots. This surplus capacity can be redirected to secondary demand regions or held to minimize holding costs.")
+        else:
+            st.warning("⚠️ **Fully Binding System:** All available depot inventory is exhausted. No slack remains.")
+
+# --- STRATEGIC DISCUSSION: SLACK & UNALLOCATED RESOURCES ---
 st.divider()
 st.subheader("💡 Strategic Benefits: Transitioning from Excel Solver to Python (`PuLP`)")
 
 st.markdown("""
-While classic accounting curricula (ACCA PM/APM) teach linear programming using manual matrix steps or Excel's Solver plugin, migrating these models to Python provides distinct commercial advantages:
+While classic accounting curricula (ACCA PM/APM/SBL) teach linear programming using manual matrix steps or Excel's Solver plugin, migrating these models to Python provides distinct commercial advantages:
 
-1. **Overcoming Constraint & Cell Limits:** Standard Excel Solver restricts models to 200 decision variables without expensive third-party add-ins. Python's `PuLP` interface handles thousands of supply nodes, routes, and SKU constraints seamlessly.
-2. **Auditability & Reduced Cell Error:** Formula errors in hidden spreadsheet cells can obscure misallocations. Python isolates logic, parameters, and constraints into clear, version-controlled code on GitHub.
-3. **Automated Pipeline Integration:** Instead of manual spreadsheet copy-pasting, Python scripts pull live inventory levels and store demand forecasts straight from SQL databases or ERP systems.
-4. **Interactive Executive Dashboards:** Deploying with frameworks like Streamlit transforms static financial workbooks into dynamic web applications that commercial management can test in real time.
+1. **Analytical Slack Management:** When constraints are **non-binding**, the solver identifies positive slack values. In supply chain governance, surplus depot capacity highlights idle inventory holding costs that management can reallocate to auxiliary sales channels.
+2. **Overcoming Constraint & Cell Limits:** Standard Excel Solver restricts models to 200 decision variables without expensive third-party add-ins. Python's `PuLP` interface handles thousands of supply nodes, routes, and SKU constraints seamlessly.
+3. **Auditability & Reduced Cell Error:** Formula errors in hidden spreadsheet cells can obscure misallocations. Python isolates logic, parameters, and constraints into clear, version-controlled code on GitHub.
+4. **Automated Pipeline Integration:** Instead of manual spreadsheet copy-pasting, Python scripts pull live inventory levels and store demand forecasts straight from SQL databases or ERP systems.
 """)
