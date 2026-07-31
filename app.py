@@ -47,13 +47,17 @@ total_demand = sum(demand.values())
 # --- MAIN CONTENT: COST MATRIX CONFIGURATION ---
 st.subheader("📊 Unit Shipping Cost Matrix (£ per unit)")
 
+# Explicit Data Structure Definition
 default_cost_data = {
     "Hub North": [4.5, 7.0, 8.0],
     "Hub Central": [6.0, 4.0, 5.0],
     "Hub South": [8.0, 5.5, 3.5],
     "Hub East": [5.0, 6.5, 4.0]
 }
+
+# Create DataFrame and explicitly name the index to prevent Streamlit editor TypeErrors
 cost_df = pd.DataFrame(default_cost_data, index=warehouses)
+cost_df.index.name = "Warehouse"
 
 edited_cost_df = st.data_editor(
     cost_df,
